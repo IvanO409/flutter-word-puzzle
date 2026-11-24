@@ -4,6 +4,8 @@ import 'package:built_value/serializer.dart';
 import 'package:characters/characters.dart';
 import 'package:intl/intl.dart';
 
+import 'dart:math';
+
 part 'model.g.dart';
 
 abstract class Location implements Built<Location, LocationBuilder> {
@@ -172,6 +174,7 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
     required Location location,
     required String word,
     required Direction direction,
+    bool requireOverlap = true,
   }) {
     if (word.length < 3 || !RegExp(r'^[a-z]+$').hasMatch(word)) {
       return null;
@@ -205,7 +208,7 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
       }
       overlaps++;
     }
-    if (words.isNotEmpty && overlaps == 0) {
+    if (requireOverlap && words.isNotEmpty && overlaps == 0) {
       return null;
     }
     final candidate = rebuild(
@@ -394,6 +397,140 @@ abstract class DisplayInfo implements Built<DisplayInfo, DisplayInfoBuilder> {
   );
 }
 
+// Estado inmutable del juego. Las alternativas se agrupan por inicio y dirección.
+abstract class CrosswordPuzzleGame
+    implements Built<CrosswordPuzzleGame, CrosswordPuzzleGameBuilder> {
+  Crossword get crossword;
+  BuiltMap<Location, BuiltMap<Direction, BuiltList<String>>> get alternateWords;
+  BuiltList<CrosswordWord> get selectedWords;
+
+  CrosswordPuzzleGame._();
+  factory CrosswordPuzzleGame([
+    void Function(CrosswordPuzzleGameBuilder) updates,
+  ]) = _$CrosswordPuzzleGame;
+  static Serializer<CrosswordPuzzleGame> get serializer =>
+      _$crosswordPuzzleGameSerializer;
+
+  factory CrosswordPuzzleGame.from({
+    required Crossword crossword,
+    required BuiltSet<String> candidateWords,
+  }) {
+    final random = Random();
+    final used = crossword.words.map((w) => w.word).toSet();
+    final byLength = <int, List<String>>{};
+    for (final word in candidateWords) {
+      if (!used.contains(word)) {
+        byLength.putIfAbsent(word.length, () => []).add(word);
+      }
+    }
+    final slots = <Location, Map<Direction, BuiltList<String>>>{};
+    for (final entry in crossword.words) {
+      final alternatives = List<String>.from(
+        byLength[entry.word.length] ?? const <String>[],
+      )..shuffle(random);
+      final options = <String>[entry.word, ...alternatives.take(4)]..sort();
+      slots.putIfAbsent(entry.location, () => {})[entry.direction] =
+          BuiltList<String>(options);
+    }
+    return CrosswordPuzzleGame(
+      (b) => b
+        ..crossword.replace(crossword)
+        ..alternateWords.addAll({
+          for (final slot in slots.entries)
+            slot.key: BuiltMap<Direction, BuiltList<String>>(slot.value),
+        }),
+    );
+  }
+
+  // Se reconstruye desde cero para admitir reemplazar una respuesta previa.
+  Crossword _fromWords(Iterable<CrosswordWord> entries) {
+    var board = Crossword.crossword(
+      width: crossword.width,
+      height: crossword.height,
+    );
+    for (final entry in entries) {
+      final next = board.addWord(
+        location: entry.location,
+        word: entry.word,
+        direction: entry.direction,
+        requireOverlap: false,
+      );
+      if (next == null) {
+        throw StateError('Selected words are incompatible');
+      }
+      board = next;
+    }
+    return board;
+  }
+
+  Crossword get crosswordFromSelectedWords => _fromWords(selectedWords);
+
+  bool canSelectWord({
+    required Location location,
+    required String word,
+    required Direction direction,
+  }) {
+    final options = alternateWords[location]?[direction];
+    if (options == null || !options.contains(word)) return false;
+    final remaining = selectedWords.where(
+      (entry) => !(entry.location == location && entry.direction == direction),
+    );
+    try {
+      final board = _fromWords(remaining);
+      return board.addWord(
+            location: location,
+            word: word,
+            direction: direction,
+            requireOverlap: false,
+          ) !=
+          null;
+    } on StateError {
+      return false;
+    }
+  }
+
+  CrosswordPuzzleGame? selectWord({
+    required Location location,
+    required String word,
+    required Direction direction,
+  }) {
+    if (!canSelectWord(location: location, word: word, direction: direction)) {
+      return null;
+    }
+    final remaining = selectedWords.where(
+      (entry) => !(entry.location == location && entry.direction == direction),
+    );
+    return rebuild(
+      (b) => b.selectedWords
+        ..clear()
+        ..addAll(remaining)
+        ..add(
+          CrosswordWord.word(
+            location: location,
+            word: word,
+            direction: direction,
+          ),
+        ),
+    );
+  }
+
+  bool get solved {
+    if (selectedWords.length != crossword.words.length) return false;
+    final answer = crosswordFromSelectedWords;
+    if (!answer.valid || answer.words.length != crossword.words.length) {
+      return false;
+    }
+    return crossword.words.every(
+      (entry) => selectedWords.any(
+        (selected) =>
+            selected.word == entry.word &&
+            selected.location == entry.location &&
+            selected.direction == entry.direction,
+      ),
+    );
+  }
+}
+
 @SerializersFor([
   Location,
   Crossword,
@@ -401,5 +538,6 @@ abstract class DisplayInfo implements Built<DisplayInfo, DisplayInfoBuilder> {
   CrosswordCharacter,
   WorkQueue,
   DisplayInfo,
+  CrosswordPuzzleGame,
 ])
 final Serializers serializers = _$serializers;
