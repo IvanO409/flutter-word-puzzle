@@ -46,7 +46,7 @@ final class WordListProvider
   }
 }
 
-String _$wordListHash() => r'f99c505641982b6375a0de402bb2e80915529aa3';
+String _$wordListHash() => r'594bb6ef3eade9c980079e672a72b2426ed69e31';
 
 @ProviderFor(Size)
 final sizeProvider = SizeProvider._();
@@ -79,7 +79,7 @@ final class SizeProvider extends $NotifierProvider<Size, CrosswordSize> {
   }
 }
 
-String _$sizeHash() => r'689ac2961f81a3c3e3728d765c8b68c961b5d398';
+String _$sizeHash() => r'166d3dfac04c886b70474f6ac15205b5836027fa';
 
 abstract class _$Size extends $Notifier<CrosswordSize> {
   CrosswordSize build();
@@ -136,4 +136,4 @@ final class CrosswordProvider
   }
 }
 
-String _$crosswordHash() => r'2b03ad2d45f0afbee0bd03b9e8547e4ea80d51b9';
+String _$crosswordHash() => r'5ab59b81e7d5c60c32b2387c42d68ffd9746e83e';

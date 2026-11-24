@@ -1,29 +1,36 @@
-import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:built_collection/built_collection.dart';
 import 'package:flutter/services.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import 'model.dart' as model;
-import 'utils.dart';
+import 'isolates.dart';
 
 part 'providers.g.dart';
+
+// =====================================================
+// DICCIONARIO SOWPODS
+// =====================================================
 
 @riverpod
 Future<BuiltSet<String>> wordList(Ref ref) async {
   final re = RegExp(r'^[a-z]+$');
+
   final words = await rootBundle.loadString('assets/words.txt');
 
-  final filtered = const LineSplitter()
+  final filteredWords = const LineSplitter()
       .convert(words)
       .map((word) => word.toLowerCase().trim())
       .where((word) => word.length > 2)
       .where((word) => re.hasMatch(word));
 
-  return BuiltSet<String>(filtered);
+  return BuiltSet<String>(filteredWords);
 }
+
+// =====================================================
+// TAMAÑOS DEL CRUCIGRAMA
+// =====================================================
 
 enum CrosswordSize {
   small(20, 11),
@@ -40,72 +47,45 @@ enum CrosswordSize {
   String get label => '$width x $height';
 }
 
+// =====================================================
+// CONTROL DEL TAMAÑO
+// =====================================================
+
 @Riverpod(keepAlive: true)
 class Size extends _$Size {
   @override
-  CrosswordSize build() => CrosswordSize.medium;
+  CrosswordSize build() {
+    return CrosswordSize.medium;
+  }
 
   void setSize(CrosswordSize size) {
     state = size;
   }
 }
 
+// =====================================================
+// GENERADOR DEL CRUCIGRAMA
+// =====================================================
+
 @riverpod
 Stream<model.Crossword> crossword(Ref ref) async* {
+  // Observar el tamaño seleccionado.
   final selectedSize = ref.watch(sizeProvider);
-  final dictionary = await ref.watch(wordListProvider.future);
 
-  final random = Random();
+  // Observar el diccionario.
+  final dictionaryFuture = ref.watch(wordListProvider.future);
 
-  final words = dictionary
-      .where(
-        (word) =>
-            word.length <=
-            min(12, max(selectedSize.width, selectedSize.height)),
-      )
-      .toBuiltSet();
+  final dictionary = await dictionaryFuture;
 
-  var current = model.Crossword.crossword(
+  // Crear cuadrícula inicial.
+  final initialCrossword = model.Crossword.crossword(
     width: selectedSize.width,
     height: selectedSize.height,
   );
 
-  yield current;
-
-  final totalCells = selectedSize.width * selectedSize.height;
-  final targetCells = (totalCells * 0.8).ceil();
-
-  while (current.characters.length < targetCells) {
-    if (words.isEmpty) break;
-
-    final word = words.randomElement(random);
-    final direction = random.nextBool()
-        ? model.Direction.across
-        : model.Direction.down;
-
-    final maxX = direction == model.Direction.across
-        ? selectedSize.width - word.length
-        : selectedSize.width - 1;
-
-    final maxY = direction == model.Direction.down
-        ? selectedSize.height - word.length
-        : selectedSize.height - 1;
-
-    if (maxX < 0 || maxY < 0) continue;
-
-    final location = model.Location.at(
-      random.nextInt(maxX + 1),
-      random.nextInt(maxY + 1),
-    );
-
-    current = current.addWord(
-      location: location,
-      word: word,
-      direction: direction,
-    );
-
-    yield current;
-
-    await Future<void>.delayed(const Duration(milliseconds: 100));
-  }
+  // Delegar la generación a isolates.dart.
+  yield* exploreCrosswordSolutions(
+    crossword: initialCrossword,
+    wordList: dictionary,
+  );
 }
