@@ -78,9 +78,7 @@ abstract class CrosswordWord
 
   static int locationComparator(CrosswordWord a, CrosswordWord b) {
     final byY = a.location.y.compareTo(b.location.y);
-
     if (byY != 0) return byY;
-
     return a.location.x.compareTo(b.location.x);
   }
 
@@ -94,7 +92,6 @@ abstract class CrosswordWord
 abstract class CrosswordCharacter
     implements Built<CrosswordCharacter, CrosswordCharacterBuilder> {
   String get character;
-
   CrosswordWord? get acrossWord;
   CrosswordWord? get downWord;
 
@@ -147,25 +144,19 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
       );
 
   // ===================================================
-  // VALIDACIONES DEL CRUCIGRAMA
+  // VALIDACIONES DE LA ETAPA 6
   // ===================================================
 
   bool get valid {
-    if (width <= 0 || height <= 0) {
-      return false;
-    }
+    if (width <= 0 || height <= 0) return false;
 
     final usedWords = <String>{};
     final expected = <Location, String>{};
-
     final across = <Location, CrosswordWord>{};
     final down = <Location, CrosswordWord>{};
 
     for (final entry in words) {
-      // No permitir palabras repetidas.
-      if (!usedWords.add(entry.word)) {
-        return false;
-      }
+      if (!usedWords.add(entry.word)) return false;
 
       if (entry.word.length < 3 || !RegExp(r'^[a-z]+$').hasMatch(entry.word)) {
         return false;
@@ -178,7 +169,6 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
             ? entry.location.rightOffset(i)
             : entry.location.downOffset(i);
 
-        // Verificar límites.
         if (location.x < 0 ||
             location.y < 0 ||
             location.x >= width ||
@@ -188,7 +178,6 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
 
         final existingLetter = expected[location];
 
-        // Las intersecciones deben tener la misma letra.
         if (existingLetter != null && existingLetter != letters[i]) {
           return false;
         }
@@ -199,8 +188,6 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
             ? across
             : down;
 
-        // Impedir dos palabras en la misma dirección
-        // ocupando una misma celda.
         if (directionMap.containsKey(location)) {
           return false;
         }
@@ -209,8 +196,6 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
       }
     }
 
-    // No permitir celdas que no pertenezcan
-    // a ninguna palabra.
     if (expected.length != characters.length) {
       return false;
     }
@@ -219,21 +204,15 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
       final location = entry.key;
       final cell = characters[location];
 
-      if (cell == null) {
+      if (cell == null || cell.character != entry.value) {
         return false;
       }
 
-      if (cell.character != entry.value) {
-        return false;
-      }
-
-      // Verificar pertenencia de la celda.
       if (cell.acrossWord != across[location] ||
           cell.downWord != down[location]) {
         return false;
       }
 
-      // Validar vecinos horizontales.
       final right = location.right;
 
       if (expected.containsKey(right)) {
@@ -245,7 +224,6 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
         }
       }
 
-      // Validar vecinos verticales.
       final below = location.down;
 
       if (expected.containsKey(below)) {
@@ -262,7 +240,7 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
   }
 
   // ===================================================
-  // AGREGAR PALABRAS CON RESTRICCIONES
+  // AGREGAR PALABRAS
   // ===================================================
 
   Crossword? addWord({
@@ -270,15 +248,10 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
     required String word,
     required Direction direction,
   }) {
-    if (word.length < 3) {
+    if (word.length < 3 || !RegExp(r'^[a-z]+$').hasMatch(word)) {
       return null;
     }
 
-    if (!RegExp(r'^[a-z]+$').hasMatch(word)) {
-      return null;
-    }
-
-    // Rechazar palabras duplicadas.
     if (words.any((existing) => existing.word == word)) {
       return null;
     }
@@ -290,7 +263,6 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
           ? location.rightOffset(i)
           : location.downOffset(i);
 
-      // Validar límites.
       if (position.x < 0 ||
           position.y < 0 ||
           position.x >= width ||
@@ -300,16 +272,12 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
 
       final existing = characters[position];
 
-      if (existing == null) {
-        continue;
-      }
+      if (existing == null) continue;
 
-      // Una intersección debe tener la misma letra.
       if (existing.character != word[i]) {
         return null;
       }
 
-      // Impedir superposición en la misma dirección.
       if (direction == Direction.across && existing.acrossWord != null) {
         return null;
       }
@@ -321,13 +289,10 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
       overlaps++;
     }
 
-    // Todas las palabras posteriores a la primera
-    // deben cruzarse con otra palabra.
     if (words.isNotEmpty && overlaps == 0) {
       return null;
     }
 
-    // Construir un nuevo estado inmutable.
     final candidate = rebuild(
       (b) => b.words.add(
         CrosswordWord.word(
@@ -338,16 +303,11 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
       ),
     );
 
-    // Validar también las adyacencias.
-    if (!candidate.valid) {
-      return null;
-    }
-
-    return candidate;
+    return candidate.valid ? candidate : null;
   }
 
   // ===================================================
-  // CONSTRUIR MAPA DE CARACTERES
+  // CONSTRUIR EL MAPA DE CARACTERES
   // ===================================================
 
   @BuiltValueHook(finalizeBuilder: true)
@@ -397,11 +357,8 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
 
     for (var y = 0; y < height; y++) {
       for (var x = 0; x < width; x++) {
-        final location = Location.at(x, y);
-
-        buffer.write(characters[location]?.character ?? '.');
+        buffer.write(characters[Location.at(x, y)]?.character ?? '.');
       }
-
       buffer.writeln();
     }
 
@@ -412,8 +369,132 @@ abstract class Crossword implements Built<Crossword, CrosswordBuilder> {
 }
 
 // =====================================================
+// WORK QUEUE - ETAPA 7
+// =====================================================
+
+abstract class WorkQueue implements Built<WorkQueue, WorkQueueBuilder> {
+  Crossword get crossword;
+
+  BuiltMap<Location, Direction> get locationsToTry;
+  BuiltSet<Location> get badLocations;
+  BuiltSet<String> get candidateWords;
+
+  WorkQueue._();
+
+  factory WorkQueue([void Function(WorkQueueBuilder) updates]) = _$WorkQueue;
+
+  static Serializer<WorkQueue> get serializer => _$workQueueSerializer;
+
+  bool get isCompleted => locationsToTry.isEmpty || candidateWords.isEmpty;
+
+  // Construir una cola basada en el tablero actual.
+  static WorkQueue from({
+    required Crossword crossword,
+    required Iterable<String> candidateWords,
+    required Location startLocation,
+  }) {
+    return WorkQueue((b) {
+      b.crossword.replace(crossword);
+
+      final usedWords = crossword.words.map((entry) => entry.word).toSet();
+
+      b.candidateWords.addAll(
+        candidateWords.where(
+          (word) =>
+              word.length >= 3 &&
+              word.length <=
+                  (crossword.width > crossword.height
+                      ? crossword.width
+                      : crossword.height) &&
+              !usedWords.contains(word),
+        ),
+      );
+
+      // La primera palabra comienza en una semilla.
+      if (crossword.words.isEmpty) {
+        b.locationsToTry[startLocation] = Direction.across;
+        return;
+      }
+
+      for (final entry in crossword.characters.entries) {
+        final location = entry.key;
+        final character = entry.value;
+
+        // Una celda que ya contiene dos palabras
+        // no necesita otro cruce.
+        if (character.acrossWord != null && character.downWord != null) {
+          continue;
+        }
+
+        final Direction direction;
+
+        if (character.acrossWord != null) {
+          direction = Direction.down;
+        } else if (character.downWord != null) {
+          direction = Direction.across;
+        } else {
+          continue;
+        }
+
+        // Impedir nuevas palabras cuando ya existen
+        // vecinos que bloquearían el cruce.
+        if (direction == Direction.across) {
+          if (crossword.characters.containsKey(location.left) ||
+              crossword.characters.containsKey(location.right)) {
+            continue;
+          }
+        } else {
+          if (crossword.characters.containsKey(location.up) ||
+              crossword.characters.containsKey(location.down)) {
+            continue;
+          }
+        }
+
+        b.locationsToTry[location] = direction;
+      }
+    });
+  }
+
+  // Marcar una ubicación donde no se pudo
+  // colocar ninguna palabra válida.
+  WorkQueue remove(Location location) {
+    return rebuild(
+      (b) => b
+        ..locationsToTry.remove(location)
+        ..badLocations.add(location),
+    );
+  }
+
+  // Actualizar la cola después de agregar una palabra.
+  WorkQueue updateFrom(Crossword updatedCrossword) {
+    final next = WorkQueue.from(
+      crossword: updatedCrossword,
+      candidateWords: candidateWords,
+      startLocation: locationsToTry.isNotEmpty
+          ? locationsToTry.keys.first
+          : Location.at(0, 0),
+    );
+
+    return next.rebuild((b) {
+      b.badLocations.addAll(badLocations);
+
+      // No volver a probar ubicaciones fallidas.
+      for (final location in badLocations) {
+        b.locationsToTry.remove(location);
+      }
+    });
+  }
+}
+
+// =====================================================
 // SERIALIZADORES
 // =====================================================
 
-@SerializersFor([Location, Crossword, CrosswordWord, CrosswordCharacter])
+@SerializersFor([
+  Location,
+  Crossword,
+  CrosswordWord,
+  CrosswordCharacter,
+  WorkQueue,
+])
 final Serializers serializers = _$serializers;

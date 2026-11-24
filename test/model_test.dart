@@ -1,8 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
+
 import 'package:generate_crossword/model.dart';
+import 'package:generate_crossword/utils.dart';
 
 void main() {
-  group('Etapa 6 - Validaciones del crucigrama', () {
+  group('Etapa 6 - Restricciones', () {
     late Crossword base;
 
     setUp(() {
@@ -20,40 +22,43 @@ void main() {
       expect(result!.valid, isTrue);
     });
 
-    test('No permite palabras duplicadas', () {
+    test('Rechaza palabras duplicadas', () {
       final first = base.addWord(
         location: Location.at(1, 2),
         word: 'cat',
         direction: Direction.across,
       )!;
 
-      final result = first.addWord(
-        location: Location.at(1, 2),
-        word: 'cat',
-        direction: Direction.across,
+      expect(
+        first.addWord(
+          location: Location.at(1, 2),
+          word: 'cat',
+          direction: Direction.across,
+        ),
+        isNull,
       );
-
-      expect(result, isNull);
     });
 
-    test('Rechaza palabras fuera de los límites', () {
-      final result = base.addWord(
-        location: Location.at(19, 2),
-        word: 'cat',
-        direction: Direction.across,
+    test('Rechaza palabras fuera del tablero', () {
+      expect(
+        base.addWord(
+          location: Location.at(19, 2),
+          word: 'cat',
+          direction: Direction.across,
+        ),
+        isNull,
       );
-
-      expect(result, isNull);
     });
 
     test('Rechaza coordenadas negativas', () {
-      final result = base.addWord(
-        location: Location.at(-1, 2),
-        word: 'cat',
-        direction: Direction.across,
+      expect(
+        base.addWord(
+          location: Location.at(-1, 2),
+          word: 'cat',
+          direction: Direction.across,
+        ),
+        isNull,
       );
-
-      expect(result, isNull);
     });
 
     test('Rechaza palabras desconectadas', () {
@@ -63,13 +68,14 @@ void main() {
         direction: Direction.across,
       )!;
 
-      final result = first.addWord(
-        location: Location.at(10, 7),
-        word: 'dog',
-        direction: Direction.across,
+      expect(
+        first.addWord(
+          location: Location.at(10, 7),
+          word: 'dog',
+          direction: Direction.across,
+        ),
+        isNull,
       );
-
-      expect(result, isNull);
     });
 
     test('Rechaza palabras paralelas adyacentes', () {
@@ -79,13 +85,14 @@ void main() {
         direction: Direction.across,
       )!;
 
-      final result = first.addWord(
-        location: Location.at(1, 3),
-        word: 'dog',
-        direction: Direction.across,
+      expect(
+        first.addWord(
+          location: Location.at(1, 3),
+          word: 'dog',
+          direction: Direction.across,
+        ),
+        isNull,
       );
-
-      expect(result, isNull);
     });
 
     test('Rechaza cruces con letras incompatibles', () {
@@ -95,32 +102,34 @@ void main() {
         direction: Direction.across,
       )!;
 
-      final result = first.addWord(
-        location: Location.at(2, 2),
-        word: 'dog',
-        direction: Direction.down,
+      expect(
+        first.addWord(
+          location: Location.at(2, 2),
+          word: 'dog',
+          direction: Direction.down,
+        ),
+        isNull,
       );
-
-      expect(result, isNull);
     });
 
-    test('No permite superposiciones en la misma dirección', () {
+    test('Rechaza superposición en la misma dirección', () {
       final first = base.addWord(
         location: Location.at(1, 2),
         word: 'cat',
         direction: Direction.across,
       )!;
 
-      final result = first.addWord(
-        location: Location.at(2, 2),
-        word: 'art',
-        direction: Direction.across,
+      expect(
+        first.addWord(
+          location: Location.at(2, 2),
+          word: 'art',
+          direction: Direction.across,
+        ),
+        isNull,
       );
-
-      expect(result, isNull);
     });
 
-    test('Acepta intersecciones válidas', () {
+    test('Acepta una intersección válida', () {
       final first = base.addWord(
         location: Location.at(1, 2),
         word: 'cat',
@@ -144,31 +153,33 @@ void main() {
       expect(intersection?.downWord, isNotNull);
     });
 
-    test('Rechaza palabras de menos de tres letras', () {
-      final result = base.addWord(
-        location: Location.at(1, 2),
-        word: 'at',
-        direction: Direction.across,
+    test('Rechaza palabras demasiado cortas', () {
+      expect(
+        base.addWord(
+          location: Location.at(1, 2),
+          word: 'at',
+          direction: Direction.across,
+        ),
+        isNull,
       );
-
-      expect(result, isNull);
     });
 
-    test('Rechaza caracteres no permitidos', () {
-      final result = base.addWord(
-        location: Location.at(1, 2),
-        word: 'c4t',
-        direction: Direction.across,
+    test('Rechaza caracteres inválidos', () {
+      expect(
+        base.addWord(
+          location: Location.at(1, 2),
+          word: 'c4t',
+          direction: Direction.across,
+        ),
+        isNull,
       );
-
-      expect(result, isNull);
     });
 
-    test('El crucigrama vacío es válido', () {
+    test('Crucigrama vacío válido', () {
       expect(base.valid, isTrue);
     });
 
-    test('El crucigrama conserva el estado original', () {
+    test('Conserva estado inmutable', () {
       final result = base.addWord(
         location: Location.at(1, 2),
         word: 'cat',
@@ -177,6 +188,143 @@ void main() {
 
       expect(base.words, isEmpty);
       expect(result!.words.length, 1);
+    });
+  });
+
+  group('Etapa 7 - WorkQueue', () {
+    late Crossword emptyCrossword;
+
+    setUp(() {
+      emptyCrossword = Crossword.crossword(width: 20, height: 11);
+    });
+
+    test('Inicializa la cola en la semilla', () {
+      final queue = WorkQueue.from(
+        crossword: emptyCrossword,
+        candidateWords: ['cat', 'art', 'dog'],
+        startLocation: Location.at(0, 0),
+      );
+
+      expect(queue.locationsToTry[Location.at(0, 0)], Direction.across);
+
+      expect(queue.isCompleted, isFalse);
+    });
+
+    test('Descarta palabras usadas', () {
+      final crossword = emptyCrossword.addWord(
+        location: Location.at(1, 2),
+        word: 'cat',
+        direction: Direction.across,
+      )!;
+
+      final queue = WorkQueue.from(
+        crossword: crossword,
+        candidateWords: ['cat', 'art', 'dog'],
+        startLocation: Location.at(0, 0),
+      );
+
+      expect(queue.candidateWords.contains('cat'), isFalse);
+      expect(queue.candidateWords.contains('art'), isTrue);
+    });
+
+    test('Encuentra intersecciones disponibles', () {
+      final crossword = emptyCrossword.addWord(
+        location: Location.at(1, 2),
+        word: 'cat',
+        direction: Direction.across,
+      )!;
+
+      final queue = WorkQueue.from(
+        crossword: crossword,
+        candidateWords: ['art', 'dog'],
+        startLocation: Location.at(0, 0),
+      );
+
+      expect(queue.locationsToTry[Location.at(2, 2)], Direction.down);
+    });
+
+    test('Marca ubicaciones fallidas', () {
+      final queue = WorkQueue.from(
+        crossword: emptyCrossword,
+        candidateWords: ['cat'],
+        startLocation: Location.at(0, 0),
+      );
+
+      final updated = queue.remove(Location.at(0, 0));
+
+      expect(updated.badLocations.contains(Location.at(0, 0)), isTrue);
+
+      expect(updated.locationsToTry, isEmpty);
+      expect(updated.isCompleted, isTrue);
+    });
+
+    test('Actualiza la cola después de agregar palabra', () {
+      final queue = WorkQueue.from(
+        crossword: emptyCrossword,
+        candidateWords: ['cat', 'art'],
+        startLocation: Location.at(0, 0),
+      );
+
+      final crossword = emptyCrossword.addWord(
+        location: Location.at(0, 0),
+        word: 'cat',
+        direction: Direction.across,
+      )!;
+
+      final updated = queue.updateFrom(crossword);
+
+      expect(updated.crossword.words.length, 1);
+      expect(updated.candidateWords.contains('cat'), isFalse);
+      expect(updated.locationsToTry.isNotEmpty, isTrue);
+    });
+
+    test('Conserva ubicaciones malas conocidas', () {
+      final crossword = emptyCrossword.addWord(
+        location: Location.at(1, 2),
+        word: 'cat',
+        direction: Direction.across,
+      )!;
+
+      final queue = WorkQueue.from(
+        crossword: crossword,
+        candidateWords: ['art', 'dog'],
+        startLocation: Location.at(0, 0),
+      );
+
+      final bad = Location.at(1, 2);
+      final removed = queue.remove(bad);
+
+      final updated = removed.updateFrom(crossword);
+
+      expect(updated.badLocations.contains(bad), isTrue);
+      expect(updated.locationsToTry.containsKey(bad), isFalse);
+    });
+
+    test('Finaliza sin palabras candidatas', () {
+      final queue = WorkQueue.from(
+        crossword: emptyCrossword,
+        candidateWords: [],
+        startLocation: Location.at(0, 0),
+      );
+
+      expect(queue.isCompleted, isTrue);
+    });
+  });
+
+  group('Etapa 7 - DurationFormat', () {
+    test('Formatea segundos', () {
+      expect(const Duration(seconds: 8).formatted, '8s');
+    });
+
+    test('Formatea minutos', () {
+      expect(const Duration(minutes: 2, seconds: 5).formatted, '2:05');
+    });
+
+    test('Formatea horas', () {
+      expect(
+        const Duration(hours: 1, minutes: 2, seconds: 3).formatted,
+        '1:02:03',
+      );
     });
   });
 }

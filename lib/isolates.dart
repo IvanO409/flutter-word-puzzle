@@ -1,112 +1,186 @@
-import 'dart:async';
 import 'dart:math';
 
 import 'package:built_collection/built_collection.dart';
 import 'package:flutter/foundation.dart';
 
 import 'model.dart';
+import 'utils.dart';
 
-// Representa una posible posición de una palabra.
-typedef WordPlacement = (String word, Direction direction, Location location);
+// =====================================================
+// MENSAJE ENVIADO A COMPUTE
+// =====================================================
 
-// Datos para evaluar un lote de candidatos.
-typedef CandidateBatch = (Crossword crossword, List<WordPlacement> placements);
+typedef SearchTask = (
+  Crossword crossword,
+  Location location,
+  Direction direction,
+  List<String> words,
+);
 
-// Función independiente del proveedor Riverpod.
-// Puede ejecutarse mediante compute.
-Crossword? evaluateCandidates(CandidateBatch batch) {
-  final (crossword, placements) = batch;
+// =====================================================
+// EVALUACIÓN DE CANDIDATOS
+// =====================================================
 
-  for (final (word, direction, location) in placements) {
-    final candidate = crossword.addWord(
-      word: word,
-      direction: direction,
-      location: location,
-    );
+// Función de nivel superior para evitar capturar
+// objetos internos de Riverpod.
+Crossword? evaluateCandidates(SearchTask task) {
+  final (crossword, location, direction, words) = task;
 
-    if (candidate != null) {
-      return candidate;
+  final target = crossword.characters[location];
+
+  // Caso especial: primera palabra.
+  if (target == null) {
+    for (final word in words) {
+      final result = crossword.addWord(
+        location: location,
+        word: word,
+        direction: direction,
+      );
+
+      if (result != null) {
+        return result;
+      }
+    }
+
+    return null;
+  }
+
+  var tryCount = 0;
+
+  for (final word in words) {
+    tryCount++;
+
+    if (tryCount > 1000) {
+      break;
+    }
+
+    // Buscar todas las posiciones donde la palabra
+    // contiene la letra de intersección.
+    for (var index = 0; index < word.length; index++) {
+      if (word[index] != target.character) {
+        continue;
+      }
+
+      final startLocation = switch (direction) {
+        Direction.across => location.leftOffset(index),
+        Direction.down => location.upOffset(index),
+      };
+
+      final candidate = crossword.addWord(
+        location: startLocation,
+        word: word,
+        direction: direction,
+      );
+
+      if (candidate != null) {
+        return candidate;
+      }
     }
   }
 
   return null;
 }
 
-// Generador asíncrono de crucigramas.
+// =====================================================
+// BÚSQUEDA GUIADA CON WORKQUEUE
+// =====================================================
+
 Stream<Crossword> exploreCrosswordSolutions({
   required Crossword crossword,
   required BuiltSet<String> wordList,
 }) async* {
+  final stopwatch = Stopwatch()..start();
   final random = Random();
 
-  final usableWords = wordList
-      .where(
-        (word) =>
-            word.length <= min(12, max(crossword.width, crossword.height)),
-      )
-      .toList(growable: false);
+  var workQueue = WorkQueue.from(
+    crossword: crossword,
+    candidateWords: wordList,
+    startLocation: Location.at(0, 0),
+  );
 
-  var current = crossword;
+  // Enviar el estado inicial a la interfaz.
+  yield workQueue.crossword;
 
-  // Mostrar primero la cuadrícula vacía.
-  yield current;
+  final totalCells = crossword.width * crossword.height;
+  final targetCells = (totalCells * 0.80).ceil();
 
-  if (usableWords.isEmpty) {
-    return;
-  }
+  var successfulPlacements = 0;
+  var rejectedLocations = 0;
 
-  final targetCells = (current.width * current.height * 0.8).ceil();
+  try {
+    while (!workQueue.isCompleted &&
+        workQueue.crossword.characters.length < targetCells) {
+      // Elegir una intersección pendiente.
+      final locations = workQueue.locationsToTry.keys.toList();
 
-  const maxAttempts = 30000;
-  const batchSize = 64;
+      if (locations.isEmpty) {
+        break;
+      }
 
-  var attempts = 0;
+      final location = locations[random.nextInt(locations.length)];
 
-  while (current.characters.length < targetCells && attempts < maxAttempts) {
-    final placements = <WordPlacement>[];
+      final direction = workQueue.locationsToTry[location]!;
 
-    for (var i = 0; i < batchSize && attempts < maxAttempts; i++) {
-      attempts++;
+      final target = workQueue.crossword.characters[location];
 
-      final word = usableWords[random.nextInt(usableWords.length)];
+      // Filtrar palabras que contienen la letra
+      // requerida para esta intersección.
+      final candidates = workQueue.candidateWords.where((word) {
+        if (target == null) {
+          return word.length <= workQueue.crossword.width;
+        }
 
-      final direction = random.nextBool() ? Direction.across : Direction.down;
+        return word.contains(target.character);
+      }).toList();
 
-      final maxX = direction == Direction.across
-          ? current.width - word.length
-          : current.width - 1;
+      // Variar el orden de búsqueda.
+      candidates.shuffle(random);
 
-      final maxY = direction == Direction.down
-          ? current.height - word.length
-          : current.height - 1;
+      // Probar como máximo 1000 palabras.
+      final selectedWords = candidates.take(1000).toList(growable: false);
 
-      if (maxX < 0 || maxY < 0) {
+      if (selectedWords.isEmpty) {
+        workQueue = workQueue.remove(location);
+        rejectedLocations++;
         continue;
       }
 
-      final location = Location.at(
-        random.nextInt(maxX + 1),
-        random.nextInt(maxY + 1),
-      );
+      // compute usa aislamiento separado en las
+      // plataformas nativas compatibles.
+      final result = await compute(evaluateCandidates, (
+        workQueue.crossword,
+        location,
+        direction,
+        selectedWords,
+      ));
 
-      placements.add((word, direction, location));
+      if (result != null) {
+        // Actualizar cola con el crucigrama válido.
+        workQueue = workQueue.updateFrom(result);
+
+        successfulPlacements++;
+
+        // Refrescar la cuadrícula.
+        yield workQueue.crossword;
+      } else {
+        // No hubo solución: registrar ubicación fallida.
+        workQueue = workQueue.remove(location);
+        rejectedLocations++;
+      }
+
+      // Permitir que el ciclo de eventos procese
+      // actualizaciones de interfaz.
+      await Future<void>.delayed(Duration.zero);
     }
+  } finally {
+    stopwatch.stop();
 
-    if (placements.isEmpty) {
-      continue;
-    }
-
-    // Evaluar candidatos fuera del aislamiento
-    // principal en plataformas nativas.
-    final candidate = await compute(evaluateCandidates, (current, placements));
-
-    if (candidate != null) {
-      current = candidate;
-
-      // Enviar un estado válido a la interfaz.
-      yield current;
-
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-    }
+    debugPrint('======================================');
+    debugPrint('ETAPA 7 - GENERACIÓN DE CRUCIGRAMAS');
+    debugPrint('Tiempo: ${stopwatch.elapsed.formatted}');
+    debugPrint('Palabras colocadas: $successfulPlacements');
+    debugPrint('Ubicaciones descartadas: $rejectedLocations');
+    debugPrint('Celdas ocupadas: ${workQueue.crossword.characters.length}');
+    debugPrint('======================================');
   }
 }
