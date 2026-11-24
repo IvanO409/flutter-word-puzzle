@@ -52,6 +52,7 @@ void main() {
     await tester.pump();
     expect(find.text('20 x 11'), findsOneWidget);
     expect(find.text('Display Info'), findsOneWidget);
+    expect(find.text('4 workers'), findsOneWidget);
     await tester.tap(find.text('Display Info'));
     await tester.pump();
     expect(find.text('Generation statistics'), findsOneWidget);

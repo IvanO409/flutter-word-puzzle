@@ -23,36 +23,39 @@ class CrosswordWidget extends ConsumerWidget {
         return TableViewCell(
           child: Consumer(
             builder: (context, ref, child) {
-              final character = ref.watch(
-                workQueueProvider.select(
-                  (queueAsync) => queueAsync.when(
-                    data: (queue) => queue.crossword.characters[location],
-                    error: (error, stackTrace) => null,
-                    loading: () => null,
-                  ),
-                ),
-              );
-              final hasLetter = character != null;
-              return Container(
+              // Observar el estado de la celda y la frontera de búsqueda.
+              final queue = ref.watch(workQueueProvider).value;
+              final character = queue?.crossword.characters[location];
+              final explorationCell =
+                  queue?.locationsToTry.containsKey(location) ?? false;
+              final colors = Theme.of(context).colorScheme;
+              return AnimatedContainer(
+                duration: Durations.extralong1,
+                curve: Curves.easeInOut,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: hasLetter
-                      ? Theme.of(context).colorScheme.primaryContainer
-                      : Theme.of(context).colorScheme.surface,
+                  color: explorationCell
+                      ? colors.primary
+                      : character != null
+                      ? colors.primaryContainer
+                      : colors.surface,
                   border: Border.all(
                     color: Theme.of(context).dividerColor,
                     width: 0.5,
                   ),
                 ),
-                child: hasLetter
-                    ? Text(
-                        character.character.toUpperCase(),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      )
-                    : null,
+                child: AnimatedDefaultTextStyle(
+                  duration: Durations.extralong1,
+                  curve: Curves.easeInOut,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: explorationCell
+                        ? colors.onPrimary
+                        : colors.onSurface,
+                  ),
+                  child: Text(character?.character.toUpperCase() ?? ''),
+                ),
               );
             },
           ),

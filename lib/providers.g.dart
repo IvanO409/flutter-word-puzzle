@@ -99,6 +99,58 @@ abstract class _$Size extends $Notifier<CrosswordSize> {
   }
 }
 
+@ProviderFor(WorkerCount)
+final workerCountProvider = WorkerCountProvider._();
+
+final class WorkerCountProvider
+    extends $NotifierProvider<WorkerCount, BackgroundWorkers> {
+  WorkerCountProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'workerCountProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$workerCountHash();
+
+  @$internal
+  @override
+  WorkerCount create() => WorkerCount();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(BackgroundWorkers value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<BackgroundWorkers>(value),
+    );
+  }
+}
+
+String _$workerCountHash() => r'30e8c7d0823b794b9ef2cb4aa5df984f5baa034a';
+
+abstract class _$WorkerCount extends $Notifier<BackgroundWorkers> {
+  BackgroundWorkers build();
+  @$mustCallSuper
+  @override
+  WhenComplete runBuild() {
+    final ref = this.ref as $Ref<BackgroundWorkers, BackgroundWorkers>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<BackgroundWorkers, BackgroundWorkers>,
+              BackgroundWorkers,
+              Object?,
+              Object?
+            >;
+    return element.handleCreate(ref, build);
+  }
+}
+
 @ProviderFor(StartTime)
 final startTimeProvider = StartTimeProvider._();
 
@@ -290,7 +342,7 @@ final class WorkQueueProvider
   }
 }
 
-String _$workQueueHash() => r'49f70e03aec39797c8f04b57e8719e43a5ea6f22';
+String _$workQueueHash() => r'09e7fa77bdb9ab787bd84198f457dd58dd5c0357';
 
 @ProviderFor(expectedRemainingTime)
 final expectedRemainingTimeProvider = ExpectedRemainingTimeProvider._();

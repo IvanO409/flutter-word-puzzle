@@ -41,6 +41,28 @@ class Size extends _$Size {
   void setSize(CrosswordSize size) => state = size;
 }
 
+enum BackgroundWorkers {
+  one(1),
+  two(2),
+  four(4),
+  eight(8),
+  sixteen(16),
+  thirtyTwo(32),
+  sixtyFour(64),
+  oneTwentyEight(128);
+
+  const BackgroundWorkers(this.count);
+  final int count;
+  String get label => '$count';
+}
+
+@Riverpod(keepAlive: true)
+class WorkerCount extends _$WorkerCount {
+  @override
+  BackgroundWorkers build() => BackgroundWorkers.four;
+  void setCount(BackgroundWorkers value) => state = value;
+}
+
 @Riverpod(keepAlive: true)
 class StartTime extends _$StartTime {
   @override
@@ -68,6 +90,7 @@ class ShowDisplayInfo extends _$ShowDisplayInfo {
 @riverpod
 Stream<model.WorkQueue> workQueue(Ref ref) async* {
   final size = ref.watch(sizeProvider);
+  final workers = ref.watch(workerCountProvider);
   final dictionary = await ref.watch(wordListProvider.future);
   ref.read(endTimeProvider.notifier).clear();
   ref.read(startTimeProvider.notifier).start();
@@ -79,6 +102,7 @@ Stream<model.WorkQueue> workQueue(Ref ref) async* {
     yield* exploreCrosswordSolutions(
       crossword: crossword,
       wordList: dictionary,
+      maxWorkerCount: workers.count,
     );
   } finally {
     // El proveedor puede ser invalidado si el usuario cambia el tamaño.

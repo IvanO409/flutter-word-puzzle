@@ -14,6 +14,7 @@ class CrosswordInfoWidget extends ConsumerWidget {
     final start = ref.watch(startTimeProvider);
     final end = ref.watch(endTimeProvider);
     final expected = ref.watch(expectedRemainingTimeProvider);
+    final workers = ref.watch(workerCountProvider);
     final colors = Theme.of(context).colorScheme;
 
     return Card(
@@ -64,6 +65,7 @@ class CrosswordInfoWidget extends ConsumerWidget {
                 value: info.knownBadLocationsCount,
               ),
               _StatLine(label: 'Grid filled', value: info.gridFilledPercentage),
+              _StatLine(label: 'Max worker count', value: '${workers.count}'),
               switch ((start, end)) {
                 (null, _) => const _StatLine(
                   label: 'Time elapsed',

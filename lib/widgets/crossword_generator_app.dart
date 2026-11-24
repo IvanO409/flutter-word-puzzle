@@ -39,6 +39,7 @@ class _CrosswordGeneratorMenu extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final currentSize = ref.watch(sizeProvider);
     final showInfo = ref.watch(showDisplayInfoProvider);
+    final workers = ref.watch(workerCountProvider);
     return MenuAnchor(
       builder: (context, controller, child) => IconButton(
         tooltip: 'Settings',
@@ -63,6 +64,22 @@ class _CrosswordGeneratorMenu extends ConsumerWidget {
           onPressed: () => ref.read(showDisplayInfoProvider.notifier).toggle(),
           child: const Text('Display Info'),
         ),
+        const Divider(),
+        const MenuItemButton(
+          onPressed: null,
+          child: Text('Background workers'),
+        ),
+        for (final option in BackgroundWorkers.values)
+          MenuItemButton(
+            leadingIcon: Icon(
+              workers == option
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+            ),
+            onPressed: () =>
+                ref.read(workerCountProvider.notifier).setCount(option),
+            child: Text('${option.count} workers'),
+          ),
       ],
     );
   }
