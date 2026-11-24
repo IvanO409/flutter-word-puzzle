@@ -11,7 +11,6 @@ class CrosswordWidget extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final size = ref.watch(sizeProvider);
-
     return TableView.builder(
       key: ValueKey(size),
       rowCount: size.height,
@@ -21,22 +20,19 @@ class CrosswordWidget extends ConsumerWidget {
           const TableSpan(extent: FixedTableSpanExtent(32)),
       cellBuilder: (context, vicinity) {
         final location = Location.at(vicinity.column, vicinity.row);
-
         return TableViewCell(
           child: Consumer(
             builder: (context, ref, child) {
               final character = ref.watch(
-                crosswordProvider.select(
-                  (crosswordAsync) => crosswordAsync.when(
-                    data: (crossword) => crossword.characters[location],
+                workQueueProvider.select(
+                  (queueAsync) => queueAsync.when(
+                    data: (queue) => queue.crossword.characters[location],
                     error: (error, stackTrace) => null,
                     loading: () => null,
                   ),
                 ),
               );
-
               final hasLetter = character != null;
-
               return Container(
                 alignment: Alignment.center,
                 decoration: BoxDecoration(

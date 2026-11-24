@@ -4,33 +4,22 @@ import 'package:built_collection/built_collection.dart';
 import 'package:flutter/services.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import 'model.dart' as model;
 import 'isolates.dart';
+import 'model.dart' as model;
 
 part 'providers.g.dart';
 
-// =====================================================
-// DICCIONARIO SOWPODS
-// =====================================================
-
 @riverpod
 Future<BuiltSet<String>> wordList(Ref ref) async {
-  final re = RegExp(r'^[a-z]+$');
-
   final words = await rootBundle.loadString('assets/words.txt');
-
-  final filteredWords = const LineSplitter()
-      .convert(words)
-      .map((word) => word.toLowerCase().trim())
-      .where((word) => word.length > 2)
-      .where((word) => re.hasMatch(word));
-
-  return BuiltSet<String>(filteredWords);
+  final re = RegExp(r'^[a-z]+$');
+  return BuiltSet<String>(
+    const LineSplitter()
+        .convert(words)
+        .map((word) => word.toLowerCase().trim())
+        .where((word) => word.length > 2 && re.hasMatch(word)),
+  );
 }
-
-// =====================================================
-// TAMAÑOS DEL CRUCIGRAMA
-// =====================================================
 
 enum CrosswordSize {
   small(20, 11),
@@ -40,52 +29,90 @@ enum CrosswordSize {
   xxlarge(500, 500);
 
   const CrosswordSize(this.width, this.height);
-
   final int width;
   final int height;
-
   String get label => '$width x $height';
 }
-
-// =====================================================
-// CONTROL DEL TAMAÑO
-// =====================================================
 
 @Riverpod(keepAlive: true)
 class Size extends _$Size {
   @override
-  CrosswordSize build() {
-    return CrosswordSize.medium;
-  }
+  CrosswordSize build() => CrosswordSize.medium;
+  void setSize(CrosswordSize size) => state = size;
+}
 
-  void setSize(CrosswordSize size) {
-    state = size;
+@Riverpod(keepAlive: true)
+class StartTime extends _$StartTime {
+  @override
+  DateTime? build() => null;
+  void start() => state = DateTime.now();
+  void clear() => state = null;
+}
+
+@Riverpod(keepAlive: true)
+class EndTime extends _$EndTime {
+  @override
+  DateTime? build() => null;
+  void finish() => state = DateTime.now();
+  void clear() => state = null;
+}
+
+@Riverpod(keepAlive: true)
+class ShowDisplayInfo extends _$ShowDisplayInfo {
+  @override
+  bool build() => false;
+  void toggle() => state = !state;
+  void setVisible(bool value) => state = value;
+}
+
+@riverpod
+Stream<model.WorkQueue> workQueue(Ref ref) async* {
+  final size = ref.watch(sizeProvider);
+  final dictionary = await ref.watch(wordListProvider.future);
+  ref.read(endTimeProvider.notifier).clear();
+  ref.read(startTimeProvider.notifier).start();
+  final crossword = model.Crossword.crossword(
+    width: size.width,
+    height: size.height,
+  );
+  try {
+    yield* exploreCrosswordSolutions(
+      crossword: crossword,
+      wordList: dictionary,
+    );
+  } finally {
+    // El proveedor puede ser invalidado si el usuario cambia el tamaño.
+    if (ref.mounted) {
+      ref.read(endTimeProvider.notifier).finish();
+    }
   }
 }
 
-// =====================================================
-// GENERADOR DEL CRUCIGRAMA
-// =====================================================
+const double _estimatedTotalCoverage = 0.54;
 
 @riverpod
-Stream<model.Crossword> crossword(Ref ref) async* {
-  // Observar el tamaño seleccionado.
-  final selectedSize = ref.watch(sizeProvider);
+Duration expectedRemainingTime(Ref ref) {
+  final start = ref.watch(startTimeProvider);
+  final end = ref.watch(endTimeProvider);
+  final queue = ref.watch(workQueueProvider).value;
+  if (start == null || end != null || queue == null) return Duration.zero;
+  final total = queue.crossword.width * queue.crossword.height;
+  if (total <= 0) return Duration.zero;
+  final coverage = queue.crossword.characters.length / total;
+  if (coverage <= 0) return Duration.zero;
+  final elapsedMs = DateTime.now().difference(start).inMilliseconds;
+  final remainingMs =
+      elapsedMs * (_estimatedTotalCoverage - coverage) / coverage;
+  if (!remainingMs.isFinite || remainingMs <= 0) return Duration.zero;
+  return Duration(milliseconds: remainingMs.round());
+}
 
-  // Observar el diccionario.
-  final dictionaryFuture = ref.watch(wordListProvider.future);
-
-  final dictionary = await dictionaryFuture;
-
-  // Crear cuadrícula inicial.
-  final initialCrossword = model.Crossword.crossword(
-    width: selectedSize.width,
-    height: selectedSize.height,
-  );
-
-  // Delegar la generación a isolates.dart.
-  yield* exploreCrosswordSolutions(
-    crossword: initialCrossword,
-    wordList: dictionary,
-  );
+@riverpod
+class DisplayInfo extends _$DisplayInfo {
+  @override
+  model.DisplayInfo build() {
+    final queue = ref.watch(workQueueProvider).value;
+    if (queue == null) return model.DisplayInfo.empty;
+    return model.DisplayInfo.from(workQueue: queue);
+  }
 }
